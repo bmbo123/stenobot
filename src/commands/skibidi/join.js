@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const {pipeline} = require('stream');
-const { joinVoiceChannel, VoiceReceiver } = require('@discordjs/voice');
+const { joinVoiceChannel, VoiceReceiver, EndBehaviorType } = require('@discordjs/voice');
 const { OpusEncoder } = require('@discordjs/opus');
 const  prism  = require('prism-media');
 
@@ -11,21 +11,28 @@ const fs = require('fs');
 function createListeningStream(receiver, userID) {
   const opusStream = receiver.subscribe(userID,{
     end: {
-      behavior: 0,
-      duration: 1000,
+      behavior: EndBehaviorType.AfterSilence,
+      duration: 100,
     },
   });
-
+  const opusDecoder = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
   const filename = 'output.mp3';
   const out = fs.createWriteStream(filename);
 
-  pipeline(opusStream, out, (err) => {
-    if (err) {
-      console.error('Something went wrong!', err);
-    } else {
-      console.log('Done!');
-    }
+  opusStream.pipe(opusDecoder).pipe(out);
+
+  opusStream.on('data', (data) => {
+    console.log(`Received ${chunk.length} bytes of data.`);
+    out.write(data);
+    console.log('4. Wrote data to file');
   });
+
+  opusStream.on('end', () => {
+    console.log('Stream ended!');
+    out.end();
+  });
+
+
   
 }
 
@@ -43,11 +50,9 @@ module.exports = {
         adapterCreator: channel.guild.voiceAdapterCreator,
         selfDeaf: false,
       });
-      const receiver =  new VoiceReceiver(connection);
-      createListeningStream(receiver, '423239914998464514');
-      
+    
       connection.receiver.speaking.on("start", (userID) => { 
-        console.log(userID)
+        createListeningStream(connection.receiver, userID);
        })
       
       await interaction.reply(`Joined ${channel.name}!`);
